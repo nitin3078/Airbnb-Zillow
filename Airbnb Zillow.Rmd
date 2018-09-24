@@ -1,0 +1,524 @@
+---
+title: "Data Challenge by Nitin Sharma"
+author: "Nitin Sharma"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+
+#Overview  {.tabset .tabset-fade .tabset-pills }
+
+This document is created for the data challenge to find best zip codes to invest for Airbnb.. We are provided with listing dataset (by Airbnb) and 2-bedroom apartment price data - yearly (by Zillow). Our client wants to find most attractive zipcodes to invest in  for Airbnb rental.
+We started our analysis by understanding and cleaning data as per requirement.Then, both datasets were joined using zip codes to extract apartment price from Zillow.We analyzed data further by visualizing and identifying patterns which have helped in recommending the best solution for this particular case.
+
+####Assumptions and simplifications  
+Several assumptions and simplifications were made during the project, some of which are mentioned below:
+
+1. Since Airbnb data was scrapped between 02/2017 to 05/2017, apartment prices from Zillow were taken for 05/2017 and no time-series analysis was performed to calculate present month-year prices.
+2. An occupancy rate of 0.75 is assumed to calculate yearly revenue.
+3. The daily rate was used to calculate revenue, weekly or monthly rate ignored.
+4. columns containing information about availability in 30 days(availability_30) etc. were ignored and property is assumed to be available 365 days a year.
+5. Missing values or values in the wrong format(e.g. some zip codes are blank, few are wrong) were simply removed.
+6. Results may not be statistically significant as number of observations in some categories were less. However, attempts were made to remove such categories.
+7. Airbnb prices are referred as **price** while Zillow prices are referred as **cost.**
+
+##Executive Summary  {.tabset .tabset-fade .tabset-pills }
+
+Our primary goal was to suggest where to invest in NYC. We have found top locations where return on investment is highest. Our analysis provided return on investment for each zipcode. Below are top 5 (From best to worst):
+
+1. **zipcode 10305** ROI 0.073 per dollar per year
+2. **zipcode 11434** ROI 0.072 per dollar per year
+3. **zipcode 11234** ROI 0.062 per dollar per year
+4. **zipcode 10036** ROI 0.058 per dollar per year
+5. **zipcode 10025** ROI 0.056 per dollar per year
+
+**A full list(ordered barchart) can be accessed at "Insight" tab under "Visualizating data"**
+
+Furthermore, our analysis showed us that although these locations are best locations to purchase an apartment for rent, there is a lot that can be done to further improve returns. We have analyzed data on various factors and found a pattern which leads to better return. Based on our analysis, we recommend below points to our client.
+
+* **No. of bedrooms:** We see highest return for no. of bedrooms 3 or 4 with 4 being on higer side.
+* **No. of bathrooms:** Positive linear relationship of no. of bathrooms with return. Higher the no. of bathrooms, higher the return.
+* **Review score rating:** For review rating above 90, we see highest return.
+* **Room type:** room type **Entire Home** gives better return than **Private room**.
+
+Based on above factors, we can suggest out client to buy apartments at **zipcode 10305**, having 4 beds, 3 or 4 bathrooms(higher the better) and rent entire apartment. Maintaing good review rating will help increasing revenue.
+
+
+
+
+
+##Data loading  {.tabset .tabset-fade .tabset-pills }
+
+A list of packages used in this project is documented below.
+   
+* **tidyverse** = For data import and  data manipulation. Package contains many other important packages. Most of the packages needed separately like magrittr, ggplot2,dplyr, purrr are included in this.
+
+
+**Loading packages...**
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+if (!require(tidyverse)) {
+    install.packages("tidyverse")
+    
+}
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}    
+
+library(tidyverse)
+
+```
+
+**Data loading...**
+
+Loading **Airbnb** and **Zillow** datasets.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+setwd("C:\\Users\\nitin\\Desktop\\CapitalOne")
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Airbnb <-read.csv('C:\\Users\\nitin\\Desktop\\CapitalOne\\listings.csv',stringsAsFactors=FALSE)
+Zillow <- read.csv('C:\\Users\\nitin\\Desktop\\CapitalOne\\Zip_Zhvi_2bedroom.csv',stringsAsFactors=FALSE)
+```
+
+Original **Airbnb** dataset contains **`r dim(Airbnb)[1]`** rows and **`r dim(Airbnb)[2]`** observations.
+Original **Zillow** dataset contains **`r dim(Zillow)[1]`** rows and **`r dim(Zillow)[2]`** observations.
+
+
+
+##Data Cleaning  {.tabset .tabset-fade .tabset-pills }
+
+###Data cleaning - Airbnb
+
+Keeping only most important variables for target analysis and removing other variables.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Airbnb <- Airbnb[,c(44,53,55,56,57,61,80)]
+```
+
+Only these variables are kept for analysis.
+`r colnames(Airbnb) `
+
+Structure of **Airbnb** dataset
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+str(Airbnb) 
+```
+
+Above, we can see that **price** values are imported as character which needs to be converted to numeric values.Below code performs this transformation. Also, zipcode class is  character  but for easy filtering, we can convert it to numeric for a while and later change it  to factor.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Airbnb$price<-parse_number(Airbnb$price)
+Airbnb$zipcode<-parse_number(Airbnb$zipcode) 
+```
+
+**Checking zipcode values:**
+There are **`r sum(is.na(Airbnb$zipcode)) `** NA values present in the dataset. Also when reviewing frequency of zipcodes, it is observed that there are few zipcodes which are incorrect (e.g. 5340,7310,99135 are not Newyork City codes). Although, it would be easy to find correct zipcode by lat-long values, we  avoid this as missing values is a small fraction of whole dataset( less than 1.5%).Below code removes all zipcodes where *zipcode < 10001* and *zipcode > 11694* as well as all zipcodes with *NA* values.
+
+After this, zipcode class type was converted back to factor.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Airbnb<-Airbnb %>% filter(Airbnb$zipcode>=10001 & Airbnb$zipcode<=11694)
+Airbnb$zipcode<-as.factor(Airbnb$zipcode)
+```
+
+Further, we subset Airbnb dataset to only contain records where  **No. of bedrooms=2**.
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Airbnb<-Airbnb %>% filter(Airbnb$bedrooms==2)
+```
+
+Note: Also, now data contains only 'Entire home/apt' and 'Private room', **'shared room'** values are not present anymore.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###Data cleaning - Ziilow
+
+Since **last_scraped** month-year for listing data from Airbnb is between 02/2017 and 05/2017, we use apartment cost on 05/2017. We are not currently performing time-series analysis to predict 04/2018 cost.
+
+Below, keeping only usedful variables. Also, converting **RegionName** to number for better filtering. Later it will be changed to factor class.Also, column name is renamed to "Cost".
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Zillow<-Zillow[,c(2,3,4,7,261)]
+Zillow$RegionName<-as.numeric(Zillow$RegionName)
+colnames(Zillow)[5]<-"Cost"
+```
+
+Now, these columns are present in Zillow dataset **`r colnames(Airbnb) `.**
+Subsetting datasets to contain only NYC data (same filter condition for zipcode as used in Airbnb dataset).Class of RegionName changed to factor.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Zillow<-Zillow %>% filter(Zillow$RegionName>=10001 & Zillow$RegionName<=11694)
+Zillow$RegionName<-as.factor(Zillow$RegionName)
+str(Zillow)
+
+```
+
+###Merging datasets
+Finally, we merge Airbnb and Zillow datasets on columns zipcode(Airbnb) and RegionName(Zillow). We create a new dataset - **airzil** and drop Airbnb and Zillow datasets from R global environment(for better memory use).
+Note: Dataset **airzil** will be used for the rest of the analysis.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-inner_join(Airbnb, Zillow, by = c("zipcode" = "RegionName"))
+rm(Airbnb,Zillow)
+
+```
+
+While, merging datasets, **R** coerces zipcode to character vector. we need to change this back to factor class.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil$zipcode<-as.factor(airzil$zipcode)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+##Feature creation  {.tabset .tabset-fade .tabset-pills }
+
+To understand which locations are favourable, what factors affect revenue etc, we need to create several new variables to assess investment opportunities. Each of new column creation is described below.
+
+1. **YearlyRev** - This column is created to quantify yearly revenue for each listing. We simply multiply price(per night rate) by 365(days) and 0.75(occupancy rate) to create this new column.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+airzil<-airzil %>% mutate(YearlyRev=price*365*.75)
+
+```
+
+2. **YearlyRev_zip** - This column is created to find average yearly revenue by each zipcode. It is a simple average of all listings by zipcode and it gives early mean revenue.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+airzil<-airzil %>% 
+    group_by(zipcode) %>% 
+    mutate(YearlyRev_zip = mean(YearlyRev))
+
+```
+
+
+3. **return_per_dollar_zip**- Here we introduce a new metric **return_per_dollar_zip** which (and many similar-for other combinations)  gives return of dollar investment on each zipcode. This column is generated by dividing **YearlyRev_zip** by **Cost** and gives return rate for each dollar invested per year.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  mutate(return_per_dollar_zip = (YearlyRev_zip/Cost))
+
+
+```
+
+
+4. **YearlyRev_zip_rm**- To analyze data based on combination of zipcode and room_type, we grouped data by room_type and zipcode and calculated average YearlyRev for each zipcode-room_type unique pair.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  group_by(room_type,zipcode) %>% 
+  mutate(YearlyRev_zip_rm = mean(YearlyRev))
+
+```
+
+
+5. **return_per_dollar_rm**- Dividing YearlyRev_zip_rm by Cost gives us Yearly return per dollar for each room type by zipcode.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+airzil<-airzil %>% 
+  mutate(return_per_dollar_rm = (YearlyRev_zip_rm/Cost))
+
+```
+
+
+
+6. **YearlyRev_zip_bath**- To analyze data based on combination of zipcode and no. of bathrooms, we grouped data by bathrooms and zipcode and calculated average YearlyRev for each zipcode-bathroom unique pair.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  group_by(as.factor(bathrooms),zipcode) %>% 
+  mutate(YearlyRev_zip_bath = mean(YearlyRev))
+
+
+```
+
+7. **return_per_dollar_bath**- Dividing YearlyRev_zip_bath by Cost gives us Yearly return  per dollar for no. of bathrooms per apartment by zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+airzil<-airzil %>% 
+  mutate(return_per_dollar_bath = (YearlyRev_zip_bath/Cost))
+
+```
+
+
+8. **YearlyRev_zip_beds**- To analyze data based on combination of zipcode and no. of beds, we grouped data by beds and zipcode and calculated average YearlyRev for each zipcode-beds unique pair.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  group_by(as.factor(beds),zipcode) %>% 
+  mutate(YearlyRev_zip_beds = mean(YearlyRev))
+
+```
+
+9. **return_per_dollar_beds**- Dividing YearlyRev_zip_beds by Cost gives us Yearly return per dollar for no. of beds per apartment by zipcode.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  mutate(return_per_dollar_beds = (YearlyRev_zip_beds/Cost))
+
+```
+
+
+10. **YearlyRev_zip_rating**- To analyze data based on combination of zipcode and review rating, we grouped data by review rating and zipcode and calculated average YearlyRev for each zipcode-review rating unique pair.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  group_by(as.factor(review_scores_rating),zipcode) %>% 
+  mutate(YearlyRev_zip_rating = mean(YearlyRev))
+
+```
+
+
+11. **return_per_dollar_rating**- Dividing YearlyRev_zip_rating by Cost gives us Yearly return per dollar for review rating and zipcode.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+airzil<-airzil %>% 
+  mutate(return_per_dollar_rating = (YearlyRev_zip_rating/Cost))
+
+```
+
+
+12. **break_even_years**- This column provide information about number of years required to reach  breakeven point for each zipcode.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+airzil<-airzil %>% 
+  mutate(break_even_years = (1/return_per_dollar_zip))
+```
+
+
+After creating new features, we observed that some combinations have very less count which may generate statistically insignificant results. Although issue remains, we removed records with very low count.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# dropping zipcodes from datasets where no. of observations are below 3
+airzil<-airzil %>% group_by(zipcode) %>% filter(n()>3)
+airzil$zipcode <- droplevels(airzil$zipcode)
+```
+
+Now **airzil dataset** contains **`r dim(airzil)[1]` observations** and **`r dim(airzil)[2]` variables.**
+
+
+##Visualizing data  {.tabset .tabset-fade .tabset-pills }
+
+
+### Density plots
+
+To understand our cleaned data better, first we start with density plots which explains distribution of listings by zipcodes.
+
+1. Density plot of **no. of bathrooms** for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+ggplot(airzil, aes(bathrooms, fill = zipcode, colour = zipcode)) +
+  geom_density(alpha = 0.3) +facet_wrap( ~ zipcode)
+
+```
+
+**Observations:**  It can be seen that most apartments have one bathroom, followed by two. More than 2 bathrooms are rare.
+
+
+2. Density plot of **no. of beds** for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+ggplot(airzil, aes(beds, fill = zipcode, colour = zipcode)) +
+  geom_density(alpha = 0.3) +facet_wrap( ~ zipcode)
+
+```
+
+**Observations:**   Most of the zipcodes have peak at no. of beds=2 and no. of beds=4 but there is variation in higher values. All possible values can be seen in many zipcodes.
+
+
+
+3. Density plot of **room type** for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+ggplot(airzil, aes(room_type, fill = zipcode, colour = zipcode)) +
+  geom_density(alpha = 0.3)+theme(axis.text.x = element_text(angle = 60, hjust = 1)) +facet_wrap( ~ zipcode)
+
+
+```
+
+**Observations:**   We see that most of the apartments have room type as Entire home and very less number of apartments are listed as private room.This distribution is very similar across zipcodes.
+
+
+4. Density plot of **review score rating** for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+ggplot(airzil, aes(review_scores_rating, fill = zipcode, colour = zipcode)) +
+  geom_density(alpha = 0.3) +facet_wrap( ~ zipcode)
+
+```
+
+**Observations:**   Here we see very different distributions for each zipcode. Some zipcodes have higher count for values between 90 and 100 while others have values distributed more between 70 to 90. Rating below 70 is very unlikely.
+
+
+5. Density plot of **price** for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+
+ggplot(airzil, aes(price,fill = zipcode, colour = zipcode)) +  geom_density(alpha = 0.3)+
+  scale_x_continuous(breaks = pretty(airzil$price, n = 20))+theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+
+```
+
+**Observations:**   Although color in this plot is not very helpful, this plot shows an overall distrubution of prices listed on airbnb site. By looking closely, we can see that distribution is very different for each zipcode. However, we observe that most prices are between $180 and $220 per night.Quite many zipcodes have listings for high price ( > $1000).
+
+
+### Insights
+
+Below plots provide answers to our main question - **where to invest in NYC for best return on investment??**. 
+
+**Here we not only find top locations to invest in 2-bedroom apartments, we dig further and make suggestions on how to mazximize return even at top locations.**
+
+
+Wherever possible, **colorblind friendly** color palette is used for visualization. Color blind friendly colors are defined below.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+
+1. **Best location to invest in order to maximize return**
+
+```{r echo=TRUE, message=FALSE, warning=FALSE,fig.height = 5, fig.width = 12}
+
+unique(airzil %>% select(zipcode,return_per_dollar_zip)) %>%
+  ggplot(aes(x = reorder(zipcode, -return_per_dollar_zip), y = return_per_dollar_zip)) + geom_bar(fill="#E69F00",stat = "identity")+
+  geom_text(aes(label=round(return_per_dollar_zip,3)), position=position_dodge(width=0.9), vjust=-0.25)+
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))+labs(x = "Zipcode", y="Return per Dollar")
+
+
+```
+
+
+**Observations:** Above ordered plot provides best locations to invest in NYC where 'return per dollar' is more. Best 5 zip codes to invest are **10305,111434,11234,10036 and 10022**
+
+
+2 **Another way to look at best locations is to find our breakeven point(in years) for each zipcode.**
+Below plot provides breakeven point for each zipcode.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE,fig.height = 5, fig.width = 12}
+
+ggplot(airzil, aes(x=zipcode, y=break_even_years, group=1))+ geom_point()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+labs(x = "Zipcode", y="Breakeven Point (in years)")+
+  geom_smooth(method="loess", se=F)
+```
+
+
+**Observations:** From this plot we see that it will take about 20 years to breakeven at best locations. There are many more variables we can consider to improve these results, we will explore some in below plots.
+
+3. **Room type:** Below plot provides return per zipcode by room type.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE,fig.height = 5, fig.width = 12}
+unique(airzil %>% select(zipcode,room_type,return_per_dollar_rm)) %>%
+  ggplot(aes(x = zipcode, y = return_per_dollar_rm)) + geom_bar(aes(fill = room_type),width=.7,position = "dodge",stat = "identity")+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+labs(x = "Zipcode", y="Return per Dollar")+
+  scale_fill_manual(name="Room type",values=cbPalette)
+
+```
+
+**Observations:** We see that it is beneficial to rent **Entire Apartment** instead of **Private room** as former gives better returns. This is intuitive that  renting entire apartment gives higher returns and data supports this.
+
+
+4. **No. of bathrooms:** Below plot provides return by no. of bathrooms for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE,fig.height = 5, fig.width = 12}
+
+na.omit(unique(airzil %>% select(zipcode,bathrooms,return_per_dollar_bath))) %>%
+  ggplot(aes(x = as.factor(bathrooms), y = return_per_dollar_bath, fill=as.factor(bathrooms))) +
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+labs(x = "No. of bathrooms", y="Return per Dollar")+
+  scale_fill_manual(name = "No. of bathrooms",values=cbPalette)+facet_grid(~zipcode)
+
+```
+
+**Observations:** We see that there is a constant pattern in most of the zipcodes that higher the no. of bathrooms, better the return. To improve  profit, we should suggest our client to purchase apartments with more number of bathrooms.
+
+
+5.  **No. of beds:** Below plot provides return by no. of beds for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE,fig.height = 5, fig.width = 12}
+na.omit(unique(airzil %>% select(zipcode,beds,return_per_dollar_beds))) %>%
+  ggplot(aes(x = as.factor(beds), y = return_per_dollar_beds, fill=as.factor(beds))) +
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))+labs(x = "No. of beds", y="Return per Dollar")+
+  scale_fill_manual(name = "No. of beds",values=cbPalette)+facet_grid(~zipcode)
+
+```
+
+**Observations:** We see that most profitable listings are those with no. of beds=4 followed by no. of beds=3. Apartments with no. of beds=1  provide minimum return across zipcodes. Client should invest in more beds to achieve higher returns.
+
+
+
+6. **Review socre ratings:** Below plot shows relationship between review score rating and return for each zipcode.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE,fig.height = 5, fig.width = 12}
+
+na.omit(unique(airzil %>% select(zipcode,review_scores_rating,return_per_dollar_rating))) %>%
+  ggplot(aes(x = zipcode, y = return_per_dollar_rating)) + geom_bar(aes(fill = as.factor(review_scores_rating)),position = "dodge",width=0.7,stat = "identity")+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+labs(x = "Zipcode", y="Return per Dollar")+
+  scale_fill_discrete(name = "Review score rating")
+
+```
+
+**Observations:** There is a trend between rating and return. We see higher return for rating above 90 (in pink), but this is not the case for all zipcodes. We may need more data to confirm this observations as there are many null values in ratings. But we do not see higher rating at lower returns at any place.
+
+
+##What's Next?  {.tabset .tabset-fade .tabset-pills }
+
+We have few suggestions to imorove these results.
+
+1. The analysis performed here is not statistically very significant. We have taken simple means and used that to estimate return. For a more robust and statistically significant outcome, we suggest finding price and mean price by employing a model based on various key variables from Airbnb listing.
+2. There are many unexplored variables. Few examples are **amenities, host_is_superhost** etc. Exploring these variables may tell us what to do next to improve return even further as these variables may have impact on pricing, rating etc.
+
+
+
+
+
